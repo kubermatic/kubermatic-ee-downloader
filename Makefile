@@ -1,0 +1,99 @@
+# Copyright 2026 The Kubermatic Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+BINARY_NAME := kubermatic-ee-downloader
+BUILD_DIR := bin
+MAIN_PACKAGE := ./cmd/
+
+GIT_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+LDFLAGS := -ldflags "-X 'k8c.io/kubermatic-ee-downloader/cmd.gitVersion=$(GIT_VERSION)' \
+	-X 'k8c.io/kubermatic-ee-downloader/cmd.gitCommit=$(GIT_COMMIT)' \
+	-X 'k8c.io/kubermatic-ee-downloader/cmd.buildDate=$(BUILD_DATE)'"
+
+.PHONY: fmt
+fmt: ## Run go fmt against code.
+	go fmt ./...
+
+.PHONY: vet
+vet: ## Run go vet against code.
+	go vet ./...
+
+lint: ## Run golangci-lint against code.
+	golangci-lint run -v --timeout=5m ./internal/... ./cmd/...
+
+check-dependencies: ## Verify go.mod.
+	go mod verify
+
+go-mod-tidy:
+	go mod tidy
+
+.PHONY: all
+all: build
+
+.PHONY: build
+build:
+	@echo "Building $(BINARY_NAME)..."
+	@mkdir -p $(BUILD_DIR)
+	go build -mod=mod $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PACKAGE)
+
+.PHONY: clean
+clean:
+	@echo "Cleaning..."
+	@rm -rf $(BUILD_DIR)
+
+.PHONY: test
+test:
+	@echo "Running tests..."
+	go test ./internal/...
+
+.PHONY: install
+install:
+	@echo "Installing $(BINARY_NAME)..."
+	go install $(LDFLAGS) $(MAIN_PACKAGE)
+
+.PHONY: snapshot
+snapshot: ## Create a snapshot release with goreleaser
+	@echo "Creating snapshot release..."
+	goreleaser release --snapshot --clean
+
+.PHONY: release
+release: ## Create a production release with goreleaser
+	@echo "Creating production release..."
+	goreleaser release --clean
+
+
+verify-boilerplate:  ## Run verify-boilerplate code.
+	./hack/verify-boilerplate.sh
+
+verify-imports:  ## Run verify-imports code.
+	./hack/verify-import-order.sh
+
+.PHONY: shfmt
+shfmt:
+	shfmt -w -sr -i 2 hack
+
+.PHONY: verify-shfmt
+verify-shfmt: ## Verify shell script formatting
+	shfmt -l -sr -i 2 -d hack
+
+.PHONY: verify-licenses
+verify-licenses: ## Verify license compliance
+	./hack/verify-licenses.sh
+
+.PHONY: verify-all
+verify-all: ## Run all verification checks
+	./hack/verify-all.sh

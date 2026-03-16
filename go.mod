@@ -1,4 +1,4 @@
-module github.com/kubermatic/kubermatic-ee-downloader
+module k8c.io/kubermatic-ee-downloader
 
 go 1.25.5
 
