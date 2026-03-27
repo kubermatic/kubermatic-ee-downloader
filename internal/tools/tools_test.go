@@ -50,5 +50,13 @@ func TestKnownToolsInvariants(t *testing.T) {
 		if tool.BinaryName == "" {
 			t.Errorf("tool %q has empty BinaryName", name)
 		}
+		if len(tool.Tag) == 0 {
+			t.Errorf("tool %q has empty Tag list", name)
+		}
+		for i, tg := range tool.Tag {
+			if tg == "" {
+				t.Errorf("tool %q has empty tag at index %d", name, i)
+			}
+		}
 	}
 }

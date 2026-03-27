@@ -25,6 +25,9 @@ type Tool struct {
 	Registry string
 	// BinaryName is the filename written to the output directory.
 	BinaryName string
+	// Tag is the default tag to pull if none is specified in the registry reference.
+	// Optional, defaults to "latest".
+	Tag []string
 }
 
 // KnownTools is the central registry of all downloadable enterprise tools.
@@ -35,6 +38,7 @@ var KnownTools = map[string]Tool{
 		// Registry:    "quay.io/kubermatic/conformance-ee",
 		Registry:   "docker.io/soer3n/edge-router",
 		BinaryName: "conformance-tester",
+		Tag:        []string{"latest"},
 	},
 }
 

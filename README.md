@@ -4,7 +4,15 @@ A CLI tool to download Kubermatic Enterprise Edition binaries from OCI registrie
 
 ## Overview
 
-`kubermatic-ee-downloader` pulls enterprise tool binaries (such as the conformance tester) from their OCI registries and saves them locally. It authenticates against the registry using username/password credentials, which can be provided via flags or entered interactively.
+`kubermatic-ee-downloader` pulls enterprise tool binaries (such as the conformance tester) from their OCI registries and saves them locally.
+
+### Authentication
+
+Credentials are resolved in the following order:
+
+1. **CLI flags** — `--username` and `--password`
+2. **Docker config** — `~/.docker/config.json` (e.g. after `docker login`)
+3. **Interactive prompt** — if credentials are still missing, the tool asks on stdin
 
 ## Installation
 

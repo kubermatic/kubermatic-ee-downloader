@@ -26,6 +26,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+	"k8c.io/kubermatic-ee-downloader/internal/dockerconfig"
 	"k8c.io/kubermatic-ee-downloader/internal/downloader"
 	"k8c.io/kubermatic-ee-downloader/internal/tools"
 )
@@ -57,10 +58,16 @@ func main() {
 		Short: "List available tools",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-			fmt.Fprintln(w, "TOOL\tIMAGE\tDESCRIPTION")
+			fmt.Fprintln(w, "TOOL\tIMAGE\tTAG\tDESCRIPTION")
 			for _, name := range tools.Names() {
 				t := tools.KnownTools[name]
-				fmt.Fprintf(w, "%s\t%s\t%s\n", name, t.Registry, t.Description)
+				tags := t.Tag
+				if len(tags) == 0 {
+					tags = []string{"latest"}
+				}
+				for _, tg := range tags {
+					fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, t.Registry, tg, t.Description)
+				}
 			}
 			return w.Flush()
 		},
@@ -78,7 +85,10 @@ func main() {
 		Short: "Download a tool binary from the OCI registry",
 		Long: `Download a Kubermatic enterprise tool binary from its OCI registry.
 
-Available tools can be listed with: kubermatic-downloader list
+Credentials are resolved in order: CLI flags, ~/.docker/config.json, interactive prompt.
+
+If --tag is not specified, the tool's default tag is used. Available tools and
+their tags can be listed with: kubermatic-downloader list
 
 Examples:
   kubermatic-downloader get conformance-tester
@@ -99,7 +109,15 @@ Examples:
 				registry = tool.Registry
 			}
 
-			if err := handleAuth(log, &username, &password); err != nil {
+			if tag == "" {
+				if len(tool.Tag) > 0 {
+					tag = tool.Tag[0]
+				} else {
+					tag = "latest"
+				}
+			}
+
+			if err := handleAuth(log, registry, &username, &password); err != nil {
 				return err
 			}
 
@@ -124,7 +142,7 @@ Examples:
 		},
 	}
 
-	getCmd.Flags().StringVarP(&tag, "tag", "t", "latest", "Artifact tag")
+	getCmd.Flags().StringVarP(&tag, "tag", "t", "", "Artifact tag (default: tool-specific or \"latest\")")
 	getCmd.Flags().StringVarP(&registry, "registry", "r", "", "Override OCI registry (default: tool's registry)")
 	getCmd.Flags().StringVarP(&outputPath, "output", "o", ".", "Output directory")
 
@@ -135,10 +153,28 @@ Examples:
 	}
 }
 
-func handleAuth(log *logrus.Logger, username, password *string) error {
+func handleAuth(log *logrus.Logger, registry string, username, password *string) error {
 	if *username != "" && *password != "" {
 		return nil
 	}
+
+	// Try Docker config.json before prompting.
+	creds, err := dockerconfig.GetCredentials(registry)
+	if err != nil {
+		log.WithError(err).Warn("Failed to read Docker config credentials")
+	} else if creds != nil {
+		log.Info("Using credentials from Docker config")
+		if *username == "" {
+			*username = creds.Username
+		}
+		if *password == "" {
+			*password = creds.Password
+		}
+		if *username != "" && *password != "" {
+			return nil
+		}
+	}
+
 	log.Info("Registry credentials required")
 	reader := bufio.NewReader(os.Stdin)
 	if *username == "" {
