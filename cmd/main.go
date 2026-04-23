@@ -113,11 +113,7 @@ Examples:
 			}
 
 			if version == "" {
-				if len(tool.Tag) > 0 {
-					version = tool.Tag[0]
-				} else {
-					version = "latest"
-				}
+				version = pinnedTag(tool.Tag)
 			}
 
 			if arch != "" && !contains(tool.Architectures, arch) {
@@ -185,6 +181,20 @@ Examples:
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// pinnedTag returns the first non-floating tag (i.e. not prefixed with "latest").
+// Falls back to the first tag if all tags are floating, or "latest" if the list is empty.
+func pinnedTag(tags []string) string {
+	for _, t := range tags {
+		if !strings.HasPrefix(t, "latest") {
+			return t
+		}
+	}
+	if len(tags) > 0 {
+		return tags[0]
+	}
+	return "latest"
 }
 
 func contains(slice []string, val string) bool {
