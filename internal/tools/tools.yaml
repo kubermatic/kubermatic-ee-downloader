@@ -1,3 +1,19 @@
+kubermatic-virtualization:
+  description: "Kubermatic Virtualization installer"
+  registry: "quay.io/kubermatic/kubermatic-virtualization-installer"
+  binary_name: "kubermatic-virtualization"
+  tags:
+    - latest
+    - v1.1.0
+  architectures:
+    - amd64
+    - arm64
+  os:
+    - linux
+    - darwin
+    - windows
+  simple_tag: true
+
 conformance-tester:
   description: "Kubermatic conformance cli"
   registry: "quay.io/kubermatic/conformance-ee"

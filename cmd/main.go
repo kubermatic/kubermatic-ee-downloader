@@ -140,8 +140,14 @@ Examples:
 				"output":   outputPath,
 			}).Info("Downloading tool")
 
-			outputName := fmt.Sprintf("%s_%s-%s_%s", tool.BinaryName, version, goos, arch)
-			tag := fmt.Sprintf("%s-%s_%s", version, goos, arch)
+			var outputName, tag string
+			if tool.SimpleTag {
+				tag = version
+				outputName = tool.BinaryName
+			} else {
+				tag = fmt.Sprintf("%s-%s_%s", version, goos, arch)
+				outputName = fmt.Sprintf("%s_%s-%s_%s", tool.BinaryName, version, goos, arch)
+			}
 
 			data, err := downloader.PullFromRegistry(cmd.Context(), log, registry, tag, tool.BinaryName, username, password)
 			if err != nil {

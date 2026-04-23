@@ -37,6 +37,9 @@ type Tool struct {
 	Architectures []string `yaml:"architectures"`
 	// OS lists the supported operating systems. Optional, defaults to "linux".
 	OS []string `yaml:"os"`
+	// SimpleTag disables the automatic "{version}-{os}_{arch}" tag construction.
+	// When true, the version string is used as the OCI tag directly.
+	SimpleTag bool `yaml:"simple_tag"`
 }
 
 //go:embed tools.yaml
