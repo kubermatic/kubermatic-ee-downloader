@@ -7,11 +7,8 @@ kubermatic-virtualization:
     - v1.1.0
   architectures:
     - amd64
-    - arm64
   os:
     - linux
-    - darwin
-    - windows
   simple_tag: true
 
 conformance-tester:
