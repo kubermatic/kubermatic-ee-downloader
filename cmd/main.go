@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -36,9 +37,10 @@ var version = "dev"
 
 func main() {
 	var (
-		username string
-		password string
-		verbose  bool
+		username   string
+		password   string
+		verbose    bool
+		catalogURL string
 	)
 
 	rootCmd := &cobra.Command{
@@ -46,11 +48,22 @@ func main() {
 		Short:        "Download Kubermatic enterprise CLI tools",
 		Version:      version,
 		SilenceUsage: true,
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			log := newLogger(verbose)
+			log.WithField("url", catalogURL).Debug("Fetching tool catalog")
+			catalog, err := tools.FetchCatalog(catalogURL, 5*time.Second)
+			if err != nil {
+				return fmt.Errorf("load tool catalog: %w (use --catalog-url to specify an alternative)", err)
+			}
+			tools.KnownTools = catalog
+			return nil
+		},
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&username, "username", "u", "", "Registry username")
 	rootCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "Registry password")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().StringVar(&catalogURL, "catalog-url", tools.DefaultCatalogURL, "URL of the tools catalog YAML")
 
 	// --- list command ---
 	listCmd := &cobra.Command{
