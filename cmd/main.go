@@ -48,7 +48,7 @@ func main() {
 		Short:        "Download Kubermatic enterprise CLI tools",
 		Version:      version,
 		SilenceUsage: true,
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 			log := newLogger(verbose)
 			log.WithField("url", catalogURL).Debug("Fetching tool catalog")
 			catalog, err := tools.FetchCatalog(catalogURL, 5*time.Second)

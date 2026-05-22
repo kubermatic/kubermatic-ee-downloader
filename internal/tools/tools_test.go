@@ -33,9 +33,8 @@ func TestMain(m *testing.M) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(data)
 	}))
-	defer srv.Close()
-
 	catalog, err := FetchCatalog(srv.URL, 5*time.Second)
+	srv.Close()
 	if err != nil {
 		log.Fatalf("FetchCatalog: %v", err)
 	}
@@ -58,7 +57,7 @@ func TestNamesAreSorted(t *testing.T) {
 		{
 			name:    "default catalog",
 			catalog: KnownTools,
-			want:    []string{"conformance-tester"},
+			want:    []string{"conformance-tester", "kubermatic-virtualization"},
 		},
 	}
 
