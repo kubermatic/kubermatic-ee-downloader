@@ -16,14 +16,68 @@ limitations under the License.
 package tools
 
 import (
-	"sort"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 )
 
+func TestMain(m *testing.M) {
+	data, err := os.ReadFile("tools.yaml")
+	if err != nil {
+		log.Fatalf("failed to read tools.yaml: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	catalog, err := FetchCatalog(srv.URL, 5*time.Second)
+	if err != nil {
+		log.Fatalf("FetchCatalog: %v", err)
+	}
+	KnownTools = catalog
+
+	os.Exit(m.Run())
+}
+
 func TestNamesAreSorted(t *testing.T) {
-	names := Names()
-	if !sort.StringsAreSorted(names) {
-		t.Errorf("Names() = %v, want sorted", names)
+	tests := []struct {
+		name    string
+		catalog map[string]Tool
+		want    []string
+	}{
+		{
+			name:    "custom unsorted",
+			catalog: map[string]Tool{"zebra": {}, "alpha": {}, "middle": {}},
+			want:    []string{"alpha", "middle", "zebra"},
+		},
+		{
+			name:    "default catalog",
+			catalog: KnownTools,
+			want:    []string{"conformance-tester"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prev := KnownTools
+			KnownTools = tt.catalog
+			defer func() { KnownTools = prev }()
+
+			names := Names()
+			if len(names) != len(tt.want) {
+				t.Fatalf("Names() = %v, want %v", names, tt.want)
+			}
+			for i := range tt.want {
+				if names[i] != tt.want[i] {
+					t.Errorf("Names()[%d] = %q, want %q", i, names[i], tt.want[i])
+				}
+			}
+		})
 	}
 }
 
@@ -58,5 +112,83 @@ func TestKnownToolsInvariants(t *testing.T) {
 				t.Errorf("tool %q has empty tag at index %d", name, i)
 			}
 		}
+	}
+}
+
+func TestFetchCatalogSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+test-tool:
+  description: "A test tool"
+  registry: "quay.io/test/tool"
+  binary_name: "test-tool"
+  tags:
+    - latest
+  architectures:
+    - amd64
+  os:
+    - linux
+`))
+	}))
+	defer srv.Close()
+
+	catalog, err := FetchCatalog(srv.URL, 5*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tool, ok := catalog["test-tool"]
+	if !ok {
+		t.Fatal("expected test-tool in catalog")
+	}
+	if tool.BinaryName != "test-tool" {
+		t.Errorf("BinaryName = %q, want %q", tool.BinaryName, "test-tool")
+	}
+}
+
+func TestFetchCatalogNonOKStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	_, err := FetchCatalog(srv.URL, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected error for non-200 status")
+	}
+}
+
+func TestFetchCatalogInvalidYAML(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not: valid: yaml: ["))
+	}))
+	defer srv.Close()
+
+	_, err := FetchCatalog(srv.URL, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected error for invalid YAML")
+	}
+}
+
+func TestFetchCatalogTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// block forever
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	_, err := FetchCatalog(srv.URL, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+}
+
+func TestFetchCatalogUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+
+	_, err := FetchCatalog(url, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected error for unreachable server")
 	}
 }
