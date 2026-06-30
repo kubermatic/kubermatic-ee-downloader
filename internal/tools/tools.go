@@ -16,8 +16,11 @@ limitations under the License.
 package tools
 
 import (
-	_ "embed"
+	"fmt"
+	"io"
+	"net/http"
 	"sort"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -42,18 +45,37 @@ type Tool struct {
 	SimpleTag bool `yaml:"simple_tag"`
 }
 
-//go:embed tools.yaml
-var toolsYAML []byte
+// DefaultCatalogURL is the catalog served from the main branch of this repository.
+const DefaultCatalogURL = "https://raw.githubusercontent.com/kubermatic/kubermatic-ee-downloader/main/internal/tools/tools.yaml"
 
-// KnownTools is the central registry of all downloadable enterprise tools.
-// Add new tools to internal/tools/tools.yaml.
-var KnownTools = func() map[string]Tool {
-	var m map[string]Tool
-	if err := yaml.Unmarshal(toolsYAML, &m); err != nil {
-		panic("tools: failed to parse tools.yaml: " + err.Error())
+// KnownTools is the active tool catalog, populated at startup via FetchCatalog.
+var KnownTools map[string]Tool
+
+// FetchCatalog downloads and parses a tools catalog from the given URL.
+func FetchCatalog(url string, timeout time.Duration) (map[string]Tool, error) {
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(url) //nolint:noctx
+	if err != nil {
+		return nil, fmt.Errorf("fetching catalog: %w", err)
 	}
-	return m
-}()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching catalog: unexpected status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading catalog response: %w", err)
+	}
+
+	var m map[string]Tool
+	if err := yaml.Unmarshal(body, &m); err != nil {
+		return nil, fmt.Errorf("parsing catalog YAML: %w", err)
+	}
+
+	return m, nil
+}
 
 // Names returns the sorted list of known tool names.
 func Names() []string {
