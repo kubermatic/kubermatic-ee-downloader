@@ -112,6 +112,118 @@ func TestKnownToolsInvariants(t *testing.T) {
 				t.Errorf("tool %q has empty tag at index %d", name, i)
 			}
 		}
+		if !tool.KnownKind() {
+			t.Errorf("tool %q has unknown kind %q", name, tool.Kind)
+		}
+		// Releases that predate "kind" would pull a file with simple_tag into memory.
+		if tool.IsFile() && tool.SimpleTag {
+			t.Errorf("tool %q is a file and must not set simple_tag", name)
+		}
+	}
+}
+
+func TestToolTagNameAndMode(t *testing.T) {
+	const (
+		version   = "v0.1.1-cli"
+		installer = "kubermatic-virtualization"
+	)
+	tests := []struct {
+		name     string
+		tool     Tool
+		wantTag  string
+		wantName string
+		wantMode os.FileMode
+	}{
+		{
+			name:     "binary with platform tags",
+			tool:     Tool{BinaryName: "conformance-tester"},
+			wantTag:  "v0.1.1-cli-linux_amd64",
+			wantName: "conformance-tester_v0.1.1-cli-linux_amd64",
+			wantMode: 0o755,
+		},
+		{
+			name:     "binary with simple tag",
+			tool:     Tool{BinaryName: installer, SimpleTag: true},
+			wantTag:  version,
+			wantName: installer,
+			wantMode: 0o755,
+		},
+		{
+			name:     "explicit binary kind",
+			tool:     Tool{BinaryName: installer, SimpleTag: true, Kind: KindBinary},
+			wantTag:  version,
+			wantName: installer,
+			wantMode: 0o755,
+		},
+		{
+			name:     "file keeps its published name",
+			tool:     Tool{BinaryName: "kubev-mirror", Kind: KindFile},
+			wantTag:  version,
+			wantName: "",
+			wantMode: 0o644,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.tool.OCITag(version, "linux", "amd64"); got != tt.wantTag {
+				t.Errorf("OCITag() = %q, want %q", got, tt.wantTag)
+			}
+			if got := tt.tool.OutputName(version, "linux", "amd64"); got != tt.wantName {
+				t.Errorf("OutputName() = %q, want %q", got, tt.wantName)
+			}
+			if got := tt.tool.FileMode(); got != tt.wantMode {
+				t.Errorf("FileMode() = %v, want %v", got, tt.wantMode)
+			}
+		})
+	}
+}
+
+func TestParseCatalogKind(t *testing.T) {
+	catalog, err := parseCatalog([]byte(`
+test-iso:
+  description: "A test ISO"
+  registry: "quay.io/test/iso"
+  binary_name: "test-iso"
+  kind: file
+  tags:
+    - v1.0.0
+test-tool:
+  description: "A test tool"
+  registry: "quay.io/test/tool"
+  binary_name: "test-tool"
+  kind: archive
+  tags:
+    - v1.0.0
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if iso := catalog["test-iso"]; !iso.IsFile() || !iso.KnownKind() || iso.SimpleTag {
+		t.Errorf("test-iso = %+v, want a known file kind without simple_tag", iso)
+	}
+	if tool := catalog["test-tool"]; tool.KnownKind() {
+		t.Errorf("test-tool kind %q reported as known", tool.Kind)
+	}
+}
+
+// TestParseCatalogIgnoresUnknownFields keeps the catalog open to new fields: released
+// downloaders decode it the same way, so a field they do not know must not break them.
+func TestParseCatalogIgnoresUnknownFields(t *testing.T) {
+	catalog, err := parseCatalog([]byte(`
+test-tool:
+  description: "A test tool"
+  registry: "quay.io/test/tool"
+  binary_name: "test-tool"
+  field_from_the_future: true
+  tags:
+    - latest
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tool := catalog["test-tool"]; tool.BinaryName != "test-tool" {
+		t.Errorf("BinaryName = %q, want %q", tool.BinaryName, "test-tool")
 	}
 }
 

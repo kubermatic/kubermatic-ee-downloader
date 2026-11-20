@@ -64,7 +64,21 @@ kubermatic-ee-downloader get conformance-tester \
 ```
 
 The downloaded binary is named `{tool}_{version}-{os}_{arch}`, for example:
-`conformance-tester_latest-linux_amd64`
+`conformance-tester_latest-linux_amd64`. A tool with `simple_tag` is saved as its `binary_name`, and a file
+(`kind: file`) keeps the name it was published with.
+
+Downloads are streamed to disk, so even very large files need little memory:
+
+- The file is written to `<name>.part` in the output directory and gets its final name only once its
+  digest matches the one in the registry.
+- When the connection ends early (quay.io, for example, ends every transfer after about ten minutes), the
+  download continues from the bytes already on disk. After an interruption, run the same command again to
+  continue from the `.part` file.
+- A file that is already in the output directory with the right digest is not downloaded again.
+- Only one download of a file runs at a time: a second `get` that would write the same file stops with an
+  error that says so. While a download runs, `<name>.lock` sits next to it; the system releases the lock
+  when the program ends, also after a crash.
+- Progress (size, percent, speed) is logged every 10 seconds.
 
 ### Flags
 
@@ -117,8 +131,15 @@ my-tool:
 | `tags` | Available version tags; the first entry is used as the default |
 | `architectures` | Supported CPU architectures |
 | `os` | Supported operating systems |
+| `simple_tag` | Optional. `true` pulls the version as the tag, without `-{os}_{arch}` |
+| `kind` | Optional. `binary` (default): an executable, saved with mode 0755. `file`: a data file such as an ISO image, pulled by the version as the tag, saved under the name it was published with (its `org.opencontainers.image.title`, which must contain `binary_name`) with mode 0644 |
 
-The tag pulled from the registry is constructed as `{tag}-{os}_{arch}`, e.g. `latest-cli-linux_amd64`.
+The tag pulled from the registry is constructed as `{tag}-{os}_{arch}`, e.g. `latest-cli-linux_amd64`,
+unless `simple_tag` is `true` or `kind` is `file`.
+
+Do not combine `kind: file` with `simple_tag: true`. Downloader releases that predate `kind` ignore it and look
+for the tag `{tag}-{os}_{arch}`, which is never published for a file, so they stop with "not found" instead of
+loading a large file into memory.
 
 ### Using a Custom Catalog
 

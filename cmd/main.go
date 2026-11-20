@@ -115,6 +115,11 @@ func main() {
 
 Credentials are resolved in order: CLI flags, ~/.docker/config.json, interactive prompt.
 
+The download is written to <file>.part and moved into place once its digest is verified.
+A download that is interrupted continues from the bytes on disk, also when the same
+command is run again. Only one download of a file runs at a time; another one stops
+with an error.
+
 If --version is not specified, the tool's first listed version is used. Available
 tools and their versions can be listed with: kubermatic-ee-downloader list
 
@@ -132,6 +137,9 @@ Examples:
 			tool, ok := tools.KnownTools[toolName]
 			if !ok {
 				return fmt.Errorf("unknown tool %q — run 'kubermatic-ee-downloader list' to see available tools", toolName)
+			}
+			if !tool.KnownKind() {
+				return fmt.Errorf("tool %q has kind %q, which this version does not support — update kubermatic-ee-downloader", toolName, tool.Kind)
 			}
 
 			if registry == "" {
@@ -162,18 +170,17 @@ Examples:
 				"output":   outputPath,
 			}).Info("Downloading tool")
 
-			var outputName, tag string
-			if tool.SimpleTag {
-				tag = version
-				outputName = tool.BinaryName
-			} else {
-				tag = fmt.Sprintf("%s-%s_%s", version, goos, arch)
-				outputName = fmt.Sprintf("%s_%s-%s_%s", tool.BinaryName, version, goos, arch)
+			req := downloader.Request{
+				Tag:        tool.OCITag(version, goos, arch),
+				BinaryName: tool.BinaryName,
+				Dir:        outputPath,
+				FileName:   tool.OutputName(version, goos, arch),
+				Mode:       tool.FileMode(),
 			}
 
-			data, err := downloader.PullFromRegistry(cmd.Context(), log, registry, tag, tool.BinaryName, username, password)
+			path, err := downloader.DownloadFromRegistry(cmd.Context(), log, registry, username, password, req)
 			if err != nil {
-				if !isUnauthorized(err) {
+				if !downloader.IsUnauthorized(err) {
 					return fmt.Errorf("pull failed: %w", err)
 				}
 				log.Warn("Authentication failed, please enter credentials")
@@ -181,17 +188,13 @@ Examples:
 				if err := promptCredentials(&username, &password); err != nil {
 					return err
 				}
-				data, err = downloader.PullFromRegistry(cmd.Context(), log, registry, tag, tool.BinaryName, username, password)
+				path, err = downloader.DownloadFromRegistry(cmd.Context(), log, registry, username, password, req)
 				if err != nil {
 					return fmt.Errorf("pull failed: %w", err)
 				}
 			}
 
-			if err := downloader.Save(data, outputPath, outputName); err != nil {
-				return fmt.Errorf("save failed: %w", err)
-			}
-
-			log.WithField("path", outputPath+"/"+outputName).Info("Download complete")
+			log.WithField("path", path).Info("Download complete")
 			return nil
 		},
 	}
@@ -277,11 +280,6 @@ func handleAuth(log *logrus.Logger, registry string, username, password *string)
 		return fmt.Errorf("username and password are required")
 	}
 	return nil
-}
-
-func isUnauthorized(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "401") || strings.Contains(msg, "unauthorized")
 }
 
 func promptCredentials(username, password *string) error {
