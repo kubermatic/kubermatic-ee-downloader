@@ -44,6 +44,60 @@ type Tool struct {
 	// SimpleTag disables the automatic "{version}-{os}_{arch}" tag construction.
 	// When true, the version string is used as the OCI tag directly.
 	SimpleTag bool `yaml:"simple_tag"`
+	// Kind is KindBinary (the default when empty) for an executable, or KindFile for a data
+	// file such as an ISO image. A file is pulled by its version tag, keeps the file name it
+	// was published with and is not made executable.
+	//
+	// Releases that predate this field ignore it and build the "{version}-{os}_{arch}" tag,
+	// which is never published for a file, so they stop with "not found" instead of loading
+	// a large file into memory. A file entry must therefore not set SimpleTag.
+	Kind string `yaml:"kind"`
+}
+
+const (
+	// KindBinary marks an executable, saved with mode 0755.
+	KindBinary = "binary"
+	// KindFile marks a data file such as an ISO image, saved with mode 0644.
+	KindFile = "file"
+)
+
+// IsFile reports whether the tool is a data file rather than an executable.
+func (t Tool) IsFile() bool {
+	return t.Kind == KindFile
+}
+
+// KnownKind reports whether this version of the downloader knows how to save the tool.
+func (t Tool) KnownKind() bool {
+	return t.Kind == "" || t.Kind == KindBinary || t.Kind == KindFile
+}
+
+// OCITag returns the tag to pull for the given version, OS and architecture.
+func (t Tool) OCITag(version, goos, arch string) string {
+	if t.SimpleTag || t.IsFile() {
+		return version
+	}
+	return fmt.Sprintf("%s-%s_%s", version, goos, arch)
+}
+
+// OutputName returns the file name to save the download under. It is empty for a file,
+// which keeps the name it was published with.
+func (t Tool) OutputName(version, goos, arch string) string {
+	switch {
+	case t.IsFile():
+		return ""
+	case t.SimpleTag:
+		return t.BinaryName
+	default:
+		return fmt.Sprintf("%s_%s-%s_%s", t.BinaryName, version, goos, arch)
+	}
+}
+
+// FileMode returns the permissions of the saved file: executable for a binary, not for a file.
+func (t Tool) FileMode() os.FileMode {
+	if t.IsFile() {
+		return 0o644
+	}
+	return 0o755
 }
 
 // DefaultCatalogURL is the catalog served from the main branch of this repository.

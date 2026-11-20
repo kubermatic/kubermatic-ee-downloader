@@ -1,3 +1,10 @@
+# Every downloader release from v1.1.0 on fetches this file from the main branch, so each change
+# must keep working with those releases. The fields are described in README.md ("Adding Tools").
+#
+# "kind: file" marks a data file such as an ISO image. Such an entry must not set "simple_tag":
+# releases that predate "kind" ignore it and look for the tag "{version}-{os}_{arch}", which is
+# never published for a file, so they stop with "not found" instead of loading it into memory.
+
 kubermatic-virtualization:
   description: "Kubermatic Virtualization installer"
   registry: "quay.io/kubermatic/kubermatic-virtualization-installer"
